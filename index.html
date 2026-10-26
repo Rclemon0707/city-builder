@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>小人国 · 等距城市建造</title>
+<style>
+  :root{
+    --panel: rgba(14,22,36,.82);
+    --line: rgba(120,170,240,.22);
+    --txt: #e6eefb;
+    --dim: #8ea3c2;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;overflow:hidden;background:#0a1120;color:var(--txt);
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none;}
+  #game{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    box-shadow:0 10px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
+  #stats{position:fixed;top:16px;left:16px;display:flex;padding:10px 6px;z-index:10;}
+  .stat{display:flex;flex-direction:column;gap:1px;padding:0 14px;min-width:78px;
+    border-right:1px solid rgba(120,170,240,.14);}
+  .stat:last-child{border-right:none;}
+  .stat .k{font-size:11px;color:var(--dim);letter-spacing:.08em;}
+  .stat .v{font-size:17px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.3;}
+  .stat .s{font-size:10.5px;color:var(--dim);}
+  .good{color:#7fe08a;} .warn{color:#ffd166;} .bad{color:#ff8b8b;}
+  #menu{position:fixed;top:16px;right:16px;display:flex;gap:6px;padding:8px;z-index:10;}
+  .icobtn{width:38px;height:38px;border-radius:11px;border:1px solid transparent;
+    background:rgba(255,255,255,.05);color:var(--txt);font-size:17px;cursor:pointer;
+    display:grid;place-items:center;transition:.15s;font-family:inherit;}
+  .icobtn:hover{background:rgba(120,180,255,.18);border-color:rgba(120,180,255,.35);}
+  .icobtn:active{transform:scale(.94);}
+  #dock{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);padding:8px 10px 6px;z-index:10;}
+  #tools{display:flex;gap:4px;}
+  .tool{width:78px;padding:7px 4px 6px;border-radius:12px;border:1px solid transparent;
+    background:transparent;color:inherit;cursor:pointer;display:flex;flex-direction:column;
+    align-items:center;gap:1px;transition:.15s;font-family:inherit;}
+  .tool:hover{background:rgba(255,255,255,.06);}
+  .tool .ico{font-size:19px;line-height:1.1;}
+  .tool .nm{font-size:11.5px;color:#d5e3f7;}
+  .tool .cost{font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums;}
+  .tool.sel{background:linear-gradient(180deg,rgba(106,176,255,.30),rgba(106,176,255,.10));
+    border-color:rgba(140,200,255,.55);box-shadow:0 0 18px rgba(90,160,255,.25);}
+  .tool.poor{opacity:.4;}
+  #toolinfo{margin-top:6px;text-align:center;font-size:11.5px;color:var(--dim);}
+  #cursorhint{position:fixed;left:0;top:0;padding:3px 8px;border-radius:8px;font-size:11.5px;
+    background:rgba(10,18,32,.88);border:1px solid var(--line);pointer-events:none;opacity:0;
+    transition:opacity .12s;white-space:nowrap;z-index:20;}
+  #toast{position:fixed;left:50%;top:92px;transform:translateX(-50%);padding:9px 16px;border-radius:12px;
+    background:rgba(150,50,50,.92);color:#fff;font-size:13px;opacity:0;transition:opacity .25s;
+    pointer-events:none;z-index:30;max-width:70vw;text-align:center;}
+  #toast.show{opacity:1;}
+  #help{position:fixed;inset:0;display:none;place-items:center;background:rgba(4,8,16,.6);z-index:40;}
+  #help.open{display:grid;}
+  #help .box{max-width:540px;padding:22px 26px 18px;line-height:1.75;font-size:13.5px;}
+  #help h2{margin:0 0 8px;font-size:17px;}
+  #help ul{margin:6px 0 0;padding-left:20px;color:#c9d8ee;}
+  #help li{margin:3px 0;}
+  #help kbd{background:rgba(255,255,255,.1);border:1px solid var(--line);border-radius:5px;
+    padding:0 5px;font-size:12px;font-family:inherit;}
+  #help .close{margin-top:16px;width:100%;padding:9px;border-radius:10px;border:1px solid var(--line);
+    background:rgba(106,176,255,.18);color:var(--txt);cursor:pointer;font-family:inherit;font-size:13px;}
+  #help .close:hover{background:rgba(106,176,255,.3);}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="stats" class="panel">
+  <div class="stat"><span class="k">资金</span><span class="v" id="v-money">¥4,000</span><span class="s" id="v-income">+3.5/秒</span></div>
+  <div class="stat"><span class="k">人口</span><span class="v" id="v-pop">0</span><span class="s">居民</span></div>
+  <div class="stat"><span class="k">幸福度</span><span class="v" id="v-happy">70</span><span class="s" id="v-happylabel">满意</span></div>
+  <div class="stat"><span class="k">电力</span><span class="v" id="v-power">0 / 0</span><span class="s" id="v-powerlabel">电力充裕</span></div>
+  <div class="stat"><span class="k">时间</span><span class="v" id="v-day">第 1 天</span><span class="s" id="v-speed">进行中</span></div>
+</div>
+
+<div id="menu" class="panel">
+  <button class="icobtn" id="btn-pause" title="暂停 / 继续（空格）">⏸</button>
+  <button class="icobtn" id="btn-help" title="帮助">?</button>
+  <button class="icobtn" id="btn-new" title="换一张地图（重新开始）">↺</button>
+</div>
+
+<div id="dock" class="panel">
+  <div id="tools"></div>
+  <div id="toolinfo">选择工具开始建造</div>
+</div>
+
+<div id="cursorhint"></div>
+<div id="toast"></div>
+
+<div id="help">
+  <div class="box panel">
+    <h2>小人国 · 等距城市建造</h2>
+    <div>把小岛慢慢变成一座漂亮的小城吧。这个模式很休闲：<b>永远不会破产</b>，只有城市慢慢长大。</div>
+    <ul>
+      <li><b>建造</b>：左键点击放置，按住拖动可连续铺设（铺路很方便）</li>
+      <li><b>视角</b>：右键 / 中键拖动平移，滚轮缩放，手机单指拖动平移、轻点建造</li>
+      <li><b>快捷键</b>：<kbd>1</kbd>~<kbd>7</kbd> 切换工具，<kbd>X</kbd> 拆除，<kbd>空格</kbd> 暂停</li>
+      <li><b>住宅</b>需要紧挨道路才会有人入住；住满且幸福度 ≥ 58 时会自动升级（4 → 8 → 12 人）</li>
+      <li><b>公园</b>与<b>树木</b>提升幸福度，<b>工厂</b>和<b>电站</b>会带来污染</li>
+      <li><b>商店 / 工厂</b>提供稳定收入；<b>电力不足</b>会拖慢人口增长</li>
+      <li>进度每 6 秒自动保存在浏览器里，点 <b>↺</b> 可以换一张新地图</li>
+    </ul>
+    <button class="close" id="help-close">知道了</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------------- 常量 ---------------- */
+  const N = 24;                       // 地图边长（格）
+  const TW = 64, TH = 32;             // 菱形瓦片尺寸
+  const W2 = TW / 2, H2 = TH / 2;
+  const SAVE_KEY = 'iso-city-v1';
+  const LOGIC_DT = 0.2;               // 逻辑步长（秒）
+  const HOUSE_CAP = { 1: 4, 2: 8, 3: 12 };
+  const POLLUTERS = ['factory', 'power'];
+
+  const BUILD = {
+    road:    { name: '道路', icon: '🛣️', cost: 20,  hint: '住宅必须紧挨道路才会有人入住' },
+    house:   { name: '住宅', icon: '🏠', cost: 150, hint: '容纳 4 / 8 / 12 人，住满后自动升级' },
+    shop:    { name: '商店', icon: '🏪', cost: 300, hint: '持续收入 +1.2/秒' },
+    factory: { name: '工厂', icon: '🏭', cost: 450, hint: '收入 +1.8/秒，但会污染周边' },
+    power:   { name: '电站', icon: '⚡', cost: 600, hint: '供电 +25，稍有污染' },
+    park:    { name: '公园', icon: '🌳', cost: 120, hint: '提升附近住宅的幸福度' },
+    tree:    { name: '树木', icon: '🌲', cost: 30,  hint: '装饰用，少量幸福度' },
+    del:     { name: '拆除', icon: '🧨', cost: 0,   hint: '退还 50% 建造费用' },
+  };
+  const TOOL_ORDER = ['road', 'house', 'shop', 'factory', 'power', 'park', 'tree', 'del'];
+  const TOOL_KEYS = { '1': 'road', '2': 'house', '3': 'shop', '4': 'factory', '5': 'power', '6': 'park', '7': 'tree', 'x': 'del', 'X': 'del' };
+
+  /* ---------------- DOM ---------------- */
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const $ = (id) => document.getElementById(id);
+  const elMoney = $('v-money'), elIncome = $('v-income'), elPop = $('v-pop');
+  const elHappy = $('v-happy'), elHappyLabel = $('v-happylabel');
+  const elPower = $('v-power'), elPowerLabel = $('v-powerlabel');
+  const elDay = $('v-day'), elSpeed = $('v-speed');
+  const dockEl = $('tools'), toolInfoEl = $('toolinfo');
+  const hintEl = $('cursorhint'), toastEl = $('toast'), helpEl = $('help');
+
+  /* ---------------- 状态 ---------------- */
+  const state = {
+    money: 4000,
+    pop: 0,
+    happiness: 70,
+    income: 3.5,
+    noRoadHouses: 0,
+    powerSupply: 0,
+    powerDemand: 0,
+    powerRatio: 1,
+    day: 1,
+    paused: false,
+    tool: 'road',
+    terrain: new Uint8Array(N * N),   // 0 草地 / 1 水域
+    gcol: new Array(N * N).fill('#5d9a52'),
+    cells: new Array(N * N).fill(null),
+  };
+  const view = { x: 0, y: 0, zoom: 1, cw: 0, ch: 0, dpr: 1 };
+  const pointer = { x: 0, y: 0, tx: -1, ty: -1, inside: false };
+  let simTime = 0;
+  let nowSec = 0;
+
+  /* ---------------- 小工具 ---------------- */
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const idx = (i, j) => j * N + i;
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hashTile(i, j) {
+    let h = i * 374761393 + j * 668265263;
+    h = (h ^ (h >> 13)) * 1274126177;
+    return ((h ^ (h >> 16)) >>> 0) / 4294967296;
+  }
+
+  /* ---------------- 地图生成 ---------------- */
+  function genMap(seed) {
+    const rng = mulberry32(seed);
+    const terrain = new Uint8Array(N * N);
+    const lakes = 1 + Math.floor(rng() * 2);
+    const centers = [];
+    for (let k = 0; k < lakes; k++) {
+      centers.push([5 + rng() * (N - 10), 5 + rng() * (N - 10), 1.5 + rng() * 2.1]);
+    }
+    for (let j = 0; j < N; j++) {
+      for (let i = 0; i < N; i++) {
+        for (let c = 0; c < centers.length; c++) {
+          const [lx, ly, r] = centers[c];
+          if (Math.hypot(i - lx, j - ly) + (rng() - 0.5) * 0.8 < r) { terrain[idx(i, j)] = 1; break; }
+        }
+      }
+    }
+    for (let i = 0; i < N; i++) {          // 边缘不放水，保证可建造
+      terrain[idx(i, 0)] = 0; terrain[idx(i, N - 1)] = 0;
+      terrain[idx(0, i)] = 0; terrain[idx(N - 1, i)] = 0;
+    }
+    for (let j = 1; j < N - 1; j++) {      // 树木
+      for (let i = 1; i < N - 1; i++) {
+        const k = idx(i, j);
+        if (terrain[k]) continue;
+        if (Math.abs(i - (N - 1) / 2) < 3.5 && Math.abs(j - (N - 1) / 2) < 3.5) continue;
+        if (rng() < 0.085) terrain[k] = 2;
+      }
+    }
+    state.terrain = terrain;
+    state.gcol = new Array(N * N);
+    for (let k = 0; k < N * N; k++) {
+      const t = hashTile(k % N, (k / N) | 0);
+      state.gcol[k] = 'hsl(' + Math.round(96 + t * 14) + ',' + Math.round(26 + t * 10) + '%,' + Math.round(31 + t * 7) + '%)';
+    }
+  }
+
+  function newGame(seed) {
+    genMap(seed === undefined ? Math.floor(Math.random() * 1e9) : seed);
+    state.cells = new Array(N * N).fill(null);
+    for (let k = 0; k < N * N; k++) {
+      if (state.terrain[k] === 2) {
+        state.cells[k] = { type: 'tree', lvl: 1, pop: 0, free: true };
+        state.terrain[k] = 0;
+      }
+    }
+    state.money = 4000;
+    state.pop = 0;
+    state.happiness = 70;
+    state.income = 3.5;
+    state.noRoadHouses = 0;
+    state.powerSupply = 0;
+    state.powerDemand = 0;
+    state.powerRatio = 1;
+    simTime = 0;
+    state.day = 1;
+    if (BUILD[state.tool] === undefined || state.tool === 'del') state.tool = 'road';
+    fitView();
+    selectTool(state.tool, true);
+    save();
+  }
+
+  /* ---------------- 查询 ---------------- */
+  const inMap = (i, j) => i >= 0 && j >= 0 && i < N && j < N;
+  function cellAt(i, j) { return inMap(i, j) ? state.cells[idx(i, j)] : null; }
+  function isRoad(i, j) { const c = cellAt(i, j); return !!c && c.type === 'road'; }
+  function hasRoad(i, j) {
+    return isRoad(i - 1, j) || isRoad(i + 1, j) || isRoad(i, j - 1) || isRoad(i, j + 1);
+  }
+  function countNear(i, j, types, r) {
+    const list = typeof types === 'string' ? [types] : types;
+    const r2 = r * r;
+    let n = 0;
+    for (let dj = -r; dj <= r; dj++) {
+      for (let di = -r; di <= r; di++) {
+        if (!di && !dj) continue;
+        if (di * di + dj * dj > r2) continue;
+        const a = i + di, b = j + dj;
+        if (!inMap(a, b)) continue;
+        const c = state.cells[idx(a, b)];
+        if (c && list.indexOf(c.type) >= 0) n++;
+      }
+    }
+    return n;
+  }
+
+  function canPlace(i, j, tool) {
+    if (!inMap(i, j)) return { ok: false, why: '超出地图' };
+    const k = idx(i, j);
+    const c = state.cells[k];
+    if (tool === 'del') return c ? { ok: true } : { ok: false, why: '这里没有东西', soft: true };
+    if (state.terrain[k] === 1) return { ok: false, why: '不能填湖造陆', soft: true };
+    if (c) {
+      if (c.type === 'tree' && tool !== 'tree') { /* 可以砍树建造 */ }
+      else if (c.type === 'road' && tool === 'road') return { ok: false, why: '已是道路', soft: true };
+      else if (c.type === 'tree' && tool === 'tree') return { ok: false, why: '已经有树了', soft: true };
+      else return { ok: false, why: '这里已经有建筑了', soft: true };
+    }
+    if (state.money < BUILD[tool].cost) return { ok: false, why: '资金不足' };
+    return { ok: true };
+  }
+
+  /* ---------------- 建造 / 拆除 ---------------- */
+  function place(i, j) {
+    const v = canPlace(i, j, state.tool);
+    if (!v.ok) {
+      if (v.why === '资金不足') toast('资金不足，等收入涨一涨吧');
+      return false;
+    }
+    const k = idx(i, j);
+    if (state.tool === 'del') {
+      const c = state.cells[k];
+      if (!c) return false;
+      if (!c.free) state.money += Math.round((BUILD[c.type] ? BUILD[c.type].cost : 0) * 0.5);
+      state.cells[k] = null;
+      return true;
+    }
+    state.money -= BUILD[state.tool].cost;
+    state.cells[k] = state.tool === 'house'
+      ? { type: 'house', lvl: 1, pop: 0, up: 0, bt: nowSec }
+      : { type: state.tool, bt: nowSec };
+    if (state.tool === 'house' && !hasRoad(i, j)) {
+      toast('住宅要挨着道路才会有人入住', 2400);
+    }
+    return true;
+  }
+
+  /* ---------------- 模拟 ---------------- */
+  function logic(dt) {
+    simTime += dt;
+    state.day = 1 + Math.floor(simTime / 8);
+
+    let supply = 0, demand = 0, shops = 0, factories = 0;
+    const houses = [];
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const c = state.cells[idx(i, j)];
+        if (!c) continue;
+        switch (c.type) {
+          case 'house': houses.push([i, j, c]); demand += c.lvl; break;
+          case 'shop': shops++; demand += 3; break;
+          case 'factory': factories++; demand += 5; break;
+          case 'power': supply += 25; break;
+        }
+      }
+    }
+    const ratio = demand > 0 ? Math.min(1, supply / demand) : 1;
+    state.powerSupply = supply;
+    state.powerDemand = demand;
+    state.powerRatio = ratio;
+
+    // 收入
+    const income = 3.5 + state.pop * 0.04 + shops * 1.2 * ratio + factories * 1.8 * ratio;
+    state.money += income * dt;
+    state.income = income;
+
+    // 幸福度
+    let target = 70;
+    if (houses.length) {
+      let sum = 0;
+      for (let n = 0; n < houses.length; n++) {
+        const i = houses[n][0], j = houses[n][1];
+        let v = 0;
+        v += Math.min(15, 3 * countNear(i, j, 'park', 3));
+        v += Math.min(5, 0.6 * countNear(i, j, 'tree', 2));
+        v -= Math.min(20, 2.5 * countNear(i, j, POLLUTERS, 3));
+        sum += v;
+      }
+      target = clamp(70 + sum / houses.length - (1 - ratio) * 18, 0, 100);
+    }
+    state.happiness += (target - state.happiness) * Math.min(1, dt * 0.9);
+    state.happiness = clamp(state.happiness, 0, 100);
+
+    // 人口
+    const hf = clamp((state.happiness - 35) / 60, 0.05, 1);
+    let pop = 0, noRoad = 0;
+    for (let n = 0; n < houses.length; n++) {
+      const i = houses[n][0], j = houses[n][1], c = houses[n][2];
+      const cap = HOUSE_CAP[c.lvl];
+      if (hasRoad(i, j)) {
+        if (c.pop < cap) {
+          c.pop = Math.min(cap, c.pop + dt * 0.9 * hf * (0.35 + 0.65 * ratio));
+          c.up = 0;
+        } else if (c.lvl < 3 && state.happiness >= 58 && ratio > 0.6) {
+          c.up += dt;
+          if (c.up >= 14) { c.lvl++; c.up = 0; }
+        } else {
+          c.up = Math.max(0, c.up - dt * 0.5);
+        }
+      } else if (c.pop > 0) {
+        c.pop = Math.max(0, c.pop - dt * 0.6);   // 断路后居民逐渐搬走
+        noRoad++;
+      } else {
+        noRoad++;
+      }
+      pop += c.pop;
+    }
+    state.pop = pop;
+    state.noRoadHouses = noRoad;
+  }
+
+  /* ---------------- 存档 ---------------- */
+  function save() {
+    try {
+      const cells = [];
+      for (let k = 0; k < N * N; k++) {
+        const c = state.cells[k];
+        if (!c) continue;
+        cells.push([k, c.type, c.lvl || 1, Math.round((c.pop || 0) * 100) / 100, c.free ? 1 : 0]);
+      }
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        v: 1,
+        money: Math.round(state.money),
+        happiness: state.happiness,
+        simTime: simTime,
+        day: state.day,
+        tool: state.tool,
+        terrain: Array.from(state.terrain),
+        cells: cells,
+        cam: [view.x, view.y, view.zoom],
+      }));
+    } catch (e) { /* 隐私模式等情况下静默失败 */ }
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return false;
+      const d = JSON.parse(raw);
+      if (!d || d.v !== 1 || !Array.isArray(d.terrain) || d.terrain.length !== N * N) return false;
+      state.terrain = Uint8Array.from(d.terrain);
+      state.cells = new Array(N * N).fill(null);
+      const arr = Array.isArray(d.cells) ? d.cells : [];
+      for (let n = 0; n < arr.length; n++) {
+        const e = arr[n];
+        if (!e || e.length < 2) continue;
+        const k = e[0], type = e[1];
+        if (typeof BUILD[type] !== 'object' || type === 'del') continue;
+        state.cells[k] = { type: type, lvl: e[2] || 1, pop: e[3] || 0, up: 0, free: !!e[4] };
+      }
+      state.gcol = new Array(N * N);
+      for (let k = 0; k < N * N; k++) {
+        const t = hashTile(k % N, (k / N) | 0);
+        state.gcol[k] = 'hsl(' + Math.round(96 + t * 14) + ',' + Math.round(26 + t * 10) + '%,' + Math.round(31 + t * 7) + '%)';
+      }
+      state.money = typeof d.money === 'number' ? d.money : 4000;
+      state.happiness = typeof d.happiness === 'number' ? d.happiness : 70;
+      simTime = typeof d.simTime === 'number' ? d.simTime : 0;
+      state.day = d.day || 1;
+      if (Array.isArray(d.cam) && d.cam.length === 3) {
+        view.x = d.cam[0]; view.y = d.cam[1]; view.zoom = clamp(d.cam[2], 0.35, 2.4);
+      } else {
+        fitView();
+      }
+      if (d.tool && BUILD[d.tool]) selectTool(d.tool, true);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /* ---------------- 相机 ---------------- */
+  function fitView() {
+    if (!view.cw) return;
+    view.zoom = clamp(Math.min(view.cw / (N * TW * 0.92), view.ch / (N * TH * 1.28)), 0.5, 1.45);
+    view.x = 0;
+    view.y = (N - 1) * H2;
+  }
+  function toWorld(sx, sy) {
+    return {
+      x: (sx - view.cw / 2) / view.zoom + view.x,
+      y: (sy - view.ch / 2) / view.zoom + view.y,
+    };
+  }
+  function toTile(wx, wy) {
+    const u = wx / W2, v = wy / H2;
+    return { i: Math.round((u + v) / 2), j: Math.round((v - u) / 2) };
+  }
+
+  /* ---------------- 绘图基元 ---------------- */
+  function diamond(cx, cy, w2, h2) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - h2);
+    ctx.lineTo(cx + w2, cy);
+    ctx.lineTo(cx, cy + h2);
+    ctx.lineTo(cx - w2, cy);
+    ctx.closePath();
+  }
+
+  function quad(pts, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let n = 1; n < pts.length; n++) ctx.lineTo(pts[n][0], pts[n][1]);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function prism(cx, cy, w2, h2, h, cTop, cLeft, cRight) {
+    ctx.fillStyle = cLeft;
+    ctx.beginPath();
+    ctx.moveTo(cx - w2, cy);
+    ctx.lineTo(cx, cy + h2);
+    ctx.lineTo(cx, cy + h2 - h);
+    ctx.lineTo(cx - w2, cy - h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = cRight;
+    ctx.beginPath();
+    ctx.moveTo(cx + w2, cy);
+    ctx.lineTo(cx, cy + h2);
+    ctx.lineTo(cx, cy + h2 - h);
+    ctx.lineTo(cx + w2, cy - h);
+    ctx.closePath();
+    ctx.fill();
+    diamond(cx, cy - h, w2, h2);
+    ctx.fillStyle = cTop;
+    ctx.fill();
+  }
+
+  // u 沿墙面底边（0 → 1），v 为墙高比例（0 底部 → 1 檐口）
+  function faceWin(cx, cy, w2, h2, wh, side, u0, u1, v0, v1, color) {
+    const ox = side === 'L' ? cx - w2 : cx + w2;
+    const ex = side === 'L' ? w2 : -w2;
+    const P = (u, v) => [ox + ex * u, cy + h2 * u - wh * v];
+    quad([P(u0, v0), P(u1, v0), P(u1, v1), P(u0, v1)], color);
+  }
+
+  function shadow(cx, cy, w2, h2) {
+    ctx.fillStyle = 'rgba(8,20,12,.22)';
+    ctx.beginPath();
+    ctx.ellipse(cx + 3, cy + 2, w2, h2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function roof(cx, cyTop, w2, h2, rh, cL, cR) {
+    const ay = cyTop - rh;
+    quad([[cx - w2, cyTop], [cx, cyTop + h2], [cx, ay]], cL);
+    quad([[cx + w2, cyTop], [cx, cyTop + h2], [cx, ay]], cR);
+    ctx.strokeStyle = 'rgba(255,255,255,.16)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(cx - w2, cyTop);
+    ctx.lineTo(cx, ay);
+    ctx.lineTo(cx + w2, cyTop);
+    ctx.stroke();
+  }
+
+  function bolt(x, y, s, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y - s);
+    ctx.lineTo(x + s * 0.62, y - s * 0.05);
+    ctx.lineTo(x + s * 0.12, y - s * 0.05);
+    ctx.lineTo(x + s * 0.35, y + s);
+    ctx.lineTo(x - s * 0.6, y + s * 0.05);
+    ctx.lineTo(x - s * 0.08, y + s * 0.05);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function warnIcon(x, y, s) {
+    ctx.fillStyle = 'rgba(255,182,64,.96)';
+    ctx.beginPath();
+    ctx.moveTo(x, y - s);
+    ctx.lineTo(x + s, y + s * 0.78);
+    ctx.lineTo(x - s, y + s * 0.78);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(48,32,10,.92)';
+    ctx.fillRect(x - 0.75, y - s * 0.42, 1.5, s * 0.62);
+    ctx.fillRect(x - 0.75, y + s * 0.36, 1.5, 1.6);
+  }
+
+  function smoke(x, y, phase) {
+    for (let s = 0; s < 3; s++) {
+      const p = (nowSec * 0.42 + phase + s * 0.33) % 1;
+      ctx.globalAlpha = 0.3 * (1 - p);
+      ctx.fillStyle = '#d7e2ef';
+      ctx.beginPath();
+      ctx.arc(x + Math.sin(p * 5 + phase * 6) * 5, y - p * 26, 2.5 + p * 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /* ---------------- 建筑绘制 ---------------- */
+  function drawHouse(cx, cy, cell, i, j) {
+    const lvl = cell.lvl || 1;
+    const w2 = W2 * (0.56 + 0.045 * lvl);
+    const h2 = H2 * (0.56 + 0.045 * lvl);
+    const wh = 9 + lvl * 5;
+    shadow(cx, cy, w2 * 1.05, h2 * 1.2);
+    prism(cx, cy, w2, h2, wh, '#f3e7d2', '#d3c1a3', '#b6a184');
+
+    const lit = state.powerRatio > 0.6 && (cell.pop || 0) > 0.2;
+    const wc = lit ? 'rgba(255,226,150,.92)' : 'rgba(120,150,180,.55)';
+    faceWin(cx, cy, w2, h2, wh, 'L', 0.16, 0.36, 0.30, 0.68, wc);
+    faceWin(cx, cy, w2, h2, wh, 'L', 0.60, 0.80, 0.30, 0.68, wc);
+    faceWin(cx, cy, w2, h2, wh, 'R', 0.20, 0.40, 0.30, 0.68, wc);
+    faceWin(cx, cy, w2, h2, wh, 'R', 0.64, 0.84, 0.30, 0.68, wc);
+
+    const rh = 8 + lvl * 3.5;
+    const cL = lvl >= 3 ? '#c9723f' : lvl === 2 ? '#bf5a45' : '#a8523e';
+    const cR = lvl >= 3 ? '#a85c31' : lvl === 2 ? '#9c4534' : '#8a3f2f';
+    roof(cx, cy - wh, w2 * 1.16, h2 * 1.16, rh, cL, cR);
+
+    if (i !== undefined && !hasRoad(i, j)) {
+      warnIcon(cx, cy - wh - rh - 13, 5.5);
+    } else if ((cell.pop || 0) > 0.2 && state.powerRatio <= 0.6) {
+      bolt(cx, cy - wh - rh - 16, 5.5, 'rgba(255,120,120,.9)');
+    }
+  }
+
+  function drawShop(cx, cy) {
+    const w2 = W2 * 0.66, h2 = H2 * 0.66, wh = 13;
+    shadow(cx, cy, w2 * 1.05, h2 * 1.2);
+    prism(cx, cy, w2, h2, wh, '#efe7d8', '#cfc2ac', '#ada08a');
+    for (let s = 0; s < 5; s++) {
+      const u0 = 0.06 + s * 0.18, u1 = Math.min(0.96, u0 + 0.1);
+      faceWin(cx, cy, w2, h2, wh, 'L', u0, u1, 0.52, 0.86, s % 2 ? '#f2f4f7' : '#d95b52');
+      faceWin(cx, cy, w2, h2, wh, 'R', u0, u1, 0.52, 0.86, s % 2 ? '#e3e7ec' : '#c64f46');
+    }
+    faceWin(cx, cy, w2, h2, wh, 'R', 0.28, 0.60, 0.02, 0.44, 'rgba(150,205,235,.75)');
+    faceWin(cx, cy, w2, h2, wh, 'L', 0.44, 0.74, 0.02, 0.44, 'rgba(140,195,225,.55)');
+    prism(cx, cy - wh, 11, 5.5, 7, '#ffd166', '#d9a93b', '#b98c28');
+    ctx.fillStyle = '#7c5a0e';
+    ctx.beginPath();
+    ctx.arc(cx, cy - wh - 12, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawFactory(cx, cy) {
+    const w2 = W2 * 0.72, h2 = H2 * 0.72, wh = 12;
+    shadow(cx, cy, w2 * 1.05, h2 * 1.2);
+    prism(cx, cy, w2, h2, wh, '#98a1ac', '#767f8a', '#5c646d');
+    faceWin(cx, cy, w2, h2, wh, 'L', 0.06, 0.94, 0.16, 0.3, 'rgba(255,255,255,.10)');
+    faceWin(cx, cy, w2, h2, wh, 'R', 0.06, 0.94, 0.16, 0.3, 'rgba(255,255,255,.07)');
+    for (let s = 0; s < 3; s++) {
+      faceWin(cx, cy, w2, h2, wh, 'R', 0.1 + s * 0.29, 0.1 + s * 0.29 + 0.17, 0.4, 0.72, 'rgba(180,220,250,.5)');
+    }
+    const chx = cx - 7, chy = cy - wh + 2;
+    const chx2 = cx + 9, chy2 = cy - wh - 3;
+    prism(chx, chy, 5, 2.6, 13, '#626a73', '#4a5158', '#3b4147');
+    prism(chx2, chy2, 4, 2.1, 10, '#626a73', '#4a5158', '#3b4147');
+    smoke(chx, chy - 13, 0);
+    smoke(chx2, chy2 - 10, 0.5);
+  }
+
+  function drawPower(cx, cy) {
+    const w2 = W2 * 0.7, h2 = H2 * 0.7, wh = 10;
+    shadow(cx, cy, w2 * 1.05, h2 * 1.2);
+    prism(cx, cy, w2, h2, wh, '#5e6f88', '#455467', '#313d4c');
+    faceWin(cx, cy, w2, h2, wh, 'L', 0.02, 0.98, 0.28, 0.5, '#f2c14a');
+    faceWin(cx, cy, w2, h2, wh, 'R', 0.02, 0.98, 0.28, 0.5, '#d9a832');
+    prism(cx + 2, cy - wh - 4, 12, 6, 10, '#7d8ca3', '#5d6a7d', '#46515f');
+    const p = 0.7 + 0.3 * Math.sin(nowSec * 3);
+    bolt(cx + 2, cy - wh - 26, 8, 'rgba(255,226,110,' + p.toFixed(2) + ')');
+    smoke(cx + 2, cy - wh - 20, 0.2);
+  }
+
+  function miniTree(x, y, r, ph) {
+    const sway = Math.sin(nowSec * 1.3 + ph) * 1.2;
+    ctx.fillStyle = '#6b4a2c';
+    ctx.fillRect(x - 1.2, y - 3, 2.4, 7);
+    ctx.fillStyle = '#2f7a3b';
+    ctx.beginPath();
+    ctx.arc(x + sway * 0.2, y - 5, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3f9b4c';
+    ctx.beginPath();
+    ctx.arc(x + sway * 0.3 - r * 0.25, y - 6.5, r * 0.72, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawPark(cx, cy) {
+    diamond(cx, cy, W2 * 0.88, H2 * 0.88);
+    ctx.fillStyle = '#6fb75e';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.12)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.strokeStyle = '#d8c79b';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(cx - W2 * 0.55, cy + H2 * 0.25);
+    ctx.lineTo(cx + W2 * 0.35, cy - H2 * 0.3);
+    ctx.stroke();
+    miniTree(cx - 10, cy + 1, 7, 0);
+    miniTree(cx + 12, cy + 4, 6, 1.7);
+    miniTree(cx + 2, cy + 8, 5, 3.1);
+  }
+
+  function drawTree(cx, cy, i, j) {
+    const h = hashTile(i, j);
+    const s = 0.85 + h * 0.3;
+    const sway = Math.sin(nowSec * 1.1 + h * 6.3) * 1.6;
+    shadow(cx, cy, W2 * 0.38, H2 * 0.42);
+    ctx.fillStyle = '#6d4a2b';
+    ctx.fillRect(cx - 2, cy - 18 * s, 4, 18 * s);
+    const layers = [
+      [cy - 16 * s, 16.5 * s, '#3a9248'],
+      [cy - 23 * s, 15 * s, '#2f7d3c'],
+      [cy - 30 * s, 13 * s, '#286b34'],
+    ];
+    for (let n = 0; n < layers.length; n++) {
+      const y0 = layers[n][0], r = layers[n][1], col = layers[n][2];
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(cx + sway, y0 - 13 * s);
+      ctx.lineTo(cx + r, y0 + 2);
+      ctx.lineTo(cx - r, y0 + 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  function drawRoad(cx, cy, i, j) {
+    diamond(cx, cy, W2, H2);
+    ctx.fillStyle = '#3a3f49';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.22)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const links = [
+      [i - 1, j, -1, -1],
+      [i, j - 1, 1, -1],
+      [i, j + 1, -1, 1],
+      [i + 1, j, 1, 1],
+    ];
+    let any = false;
+    for (let n = 0; n < links.length; n++) {
+      const ni = links[n][0], nj = links[n][1];
+      if (!isRoad(ni, nj)) continue;
+      any = true;
+      const mx = cx + links[n][2] * W2 / 2;
+      const my = cy + links[n][3] * H2 / 2;
+      const dx = mx - cx, dy = my - cy;
+      const len = Math.hypot(dx, dy) || 1;
+      const px = (-dy / len) * 9, py = (dx / len) * 9;
+      ctx.fillStyle = '#474d59';
+      ctx.beginPath();
+      ctx.moveTo(cx + px, cy + py);
+      ctx.lineTo(mx + px, my + py);
+      ctx.lineTo(mx - px, my - py);
+      ctx.lineTo(cx - px, cy - py);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.09)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(mx, my);
+      ctx.stroke();
+    }
+    if (!any) {
+      ctx.fillStyle = '#474d59';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 11, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawBuilding(cx, cy, cell, i, j) {
+    let scale = 1;
+    if (cell.bt) {
+      const age = nowSec - cell.bt;
+      if (age >= 0 && age < 0.28) {
+        const p = age / 0.28;
+        scale = 0.55 + 0.45 * (1 - Math.pow(1 - p, 3));
+      } else if (age >= 0.28) {
+        cell.bt = 0;
+      }
+    }
+    if (scale !== 1) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.translate(-cx, -cy);
+    }
+    switch (cell.type) {
+      case 'house': drawHouse(cx, cy, cell, i, j); break;
+      case 'shop': drawShop(cx, cy); break;
+      case 'factory': drawFactory(cx, cy); break;
+      case 'power': drawPower(cx, cy); break;
+      case 'park': drawPark(cx, cy); break;
+      case 'tree': drawTree(cx, cy, i, j); break;
+    }
+    if (scale !== 1) ctx.restore();
+  }
+
+  /* ---------------- 渲染 ---------------- */
+  function drawTile(i, j) {
+    const k = idx(i, j);
+    const cx = (i - j) * W2;
+    const cy = (i + j) * H2;
+
+    if (state.terrain[k] === 1) {
+      diamond(cx, cy, W2, H2);
+      ctx.fillStyle = '#2a6c92';
+      ctx.fill();
+      const ph = Math.sin(nowSec * 1.4 + i * 0.9 + j * 1.7);
+      ctx.strokeStyle = 'rgba(160,225,255,' + (0.08 + 0.1 * (ph * 0.5 + 0.5)).toFixed(3) + ')';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(cx - 14, cy - 1 + ph * 1.5);
+      ctx.lineTo(cx + 14, cy - 1 + ph * 1.5);
+      ctx.stroke();
+    } else {
+      diamond(cx, cy, W2, H2);
+      ctx.fillStyle = state.gcol[k];
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(20,40,20,.10)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    const cell = state.cells[k];
+    if (cell) {
+      if (cell.type === 'road') drawRoad(cx, cy, i, j);
+      else drawBuilding(cx, cy, cell, i, j);
+    }
+
+    if (pointer.tx === i && pointer.ty === j) {
+      const v = canPlace(i, j, state.tool);
+      if (!(v.soft && !v.ok)) {
+        const isDel = state.tool === 'del';
+        diamond(cx, cy, W2, H2);
+        ctx.fillStyle = v.ok
+          ? (isDel ? 'rgba(255,160,80,.18)' : 'rgba(120,220,160,.18)')
+          : 'rgba(255,110,110,.16)';
+        ctx.fill();
+        ctx.strokeStyle = v.ok
+          ? (isDel ? 'rgba(255,190,120,.9)' : 'rgba(150,255,190,.85)')
+          : 'rgba(255,140,140,.8)';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+        if (v.ok && !isDel) {
+          ctx.save();
+          ctx.globalAlpha = 0.55;
+          const ghost = state.tool === 'house'
+            ? { type: 'house', lvl: 1, pop: 0 }
+            : { type: state.tool };
+          drawBuilding(cx, cy, ghost, i, j);
+          ctx.restore();
+        }
+      }
+    }
+  }
+
+  function draw(t) {
+    nowSec = t;
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+    ctx.clearRect(0, 0, view.cw, view.ch);
+
+    const bg = ctx.createLinearGradient(0, 0, 0, view.ch);
+    bg.addColorStop(0, '#0b1424');
+    bg.addColorStop(1, '#152a42');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, view.cw, view.ch);
+
+    ctx.save();
+    ctx.translate(view.cw / 2, view.ch / 2);
+    ctx.scale(view.zoom, view.zoom);
+    ctx.translate(-view.x, -view.y);
+
+    for (let s = 0; s <= 2 * (N - 1); s++) {
+      const i0 = Math.max(0, s - (N - 1));
+      const i1 = Math.min(N - 1, s);
+      for (let i = i0; i <= i1; i++) drawTile(i, s - i);
+    }
+    ctx.restore();
+  }
+
+  /* ---------------- 交互 ---------------- */
+  let drag = null;
+  let lastHintKey = '';
+
+  function paintAt(sx, sy) {
+    const w = toWorld(sx, sy);
+    const t = toTile(w.x, w.y);
+    if (!inMap(t.i, t.j)) return;
+    const k = idx(t.i, t.j);
+    if (drag) {
+      if (drag.lastK === k) return;
+      drag.lastK = k;
+    }
+    place(t.i, t.j);
+  }
+
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button === 2 || e.button === 1) {
+      drag = { mode: 'pan', x: e.clientX, y: e.clientY };
+      canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+    if (e.button !== 0) return;
+    canvas.setPointerCapture(e.pointerId);
+    pointer.x = e.clientX; pointer.y = e.clientY; pointer.inside = true;
+    if (e.pointerType === 'touch') {
+      drag = { mode: 'touch', sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY };
+      return;
+    }
+    drag = { mode: 'paint', lastK: -1 };
+    paintAt(e.clientX, e.clientY);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    pointer.x = e.clientX; pointer.y = e.clientY; pointer.inside = true;
+    hintEl.style.left = (e.clientX + 18) + 'px';
+    hintEl.style.top = (e.clientY + 16) + 'px';
+    if (!drag) return;
+    if (drag.mode === 'pan') {
+      view.x -= (e.clientX - drag.x) / view.zoom;
+      view.y -= (e.clientY - drag.y) / view.zoom;
+      drag.x = e.clientX; drag.y = e.clientY;
+    } else if (drag.mode === 'touch') {
+      if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 9) {
+        drag = { mode: 'pan', x: e.clientX, y: e.clientY };
+      }
+    } else if (drag.mode === 'paint') {
+      paintAt(e.clientX, e.clientY);
+    }
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    if (drag && drag.mode === 'touch') {
+      paintAt(e.clientX, e.clientY);
+    }
+    drag = null;
+  });
+
+  canvas.addEventListener('pointercancel', () => { drag = null; });
+  canvas.addEventListener('pointerleave', () => { pointer.inside = false; });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const before = toWorld(e.clientX, e.clientY);
+    view.zoom = clamp(view.zoom * Math.pow(1.0016, -e.deltaY), 0.35, 2.4);
+    view.x = before.x - (e.clientX - view.cw / 2) / view.zoom;
+    view.y = before.y - (e.clientY - view.ch / 2) / view.zoom;
+  }, { passive: false });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); togglePause(); return; }
+    if (e.key === 'Escape') { helpEl.classList.remove('open'); return; }
+    const t = TOOL_KEYS[e.key];
+    if (t) selectTool(t);
+  });
+
+  /* ---------------- UI ---------------- */
+  function buildToolbar() {
+    dockEl.innerHTML = '';
+    TOOL_ORDER.forEach((t, n) => {
+      const d = BUILD[t];
+      const btn = document.createElement('button');
+      btn.className = 'tool';
+      btn.dataset.tool = t;
+      btn.title = d.hint + (n < 7 ? '（快捷键 ' + (n + 1) + '）' : '（快捷键 X）');
+      btn.innerHTML = '<span class="ico">' + d.icon + '</span>' +
+        '<span class="nm">' + d.name + '</span>' +
+        '<span class="cost">' + (d.cost ? '¥' + d.cost : '—') + '</span>';
+      btn.addEventListener('click', () => selectTool(t));
+      dockEl.appendChild(btn);
+    });
+  }
+
+  function selectTool(t, silent) {
+    state.tool = t;
+    const btns = dockEl.querySelectorAll('.tool');
+    for (let n = 0; n < btns.length; n++) btns[n].classList.toggle('sel', btns[n].dataset.tool === t);
+    const d = BUILD[t];
+    toolInfoEl.textContent = d.name + (d.cost ? ' · ¥' + d.cost : '') + ' · ' + d.hint;
+    if (!silent) lastHintKey = '';
+  }
+
+  function togglePause() {
+    state.paused = !state.paused;
+    $('btn-pause').textContent = state.paused ? '▶' : '⏸';
+    updateHUD();
+  }
+
+  let toastTimer = 0;
+  function toast(msg, ms) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms || 2200);
+  }
+
+  function updateHUD() {
+    const money = Math.round(state.money);
+    elMoney.textContent = '¥' + money.toLocaleString('zh-CN');
+    elMoney.className = 'v' + (money <= 0 ? ' bad' : '');
+    elIncome.textContent = '+' + state.income.toFixed(1) + '/秒';
+
+    elPop.textContent = Math.round(state.pop).toLocaleString('zh-CN');
+
+    const hp = Math.round(state.happiness);
+    elHappy.textContent = hp;
+    elHappy.className = 'v ' + (hp >= 65 ? 'good' : hp >= 45 ? 'warn' : 'bad');
+    elHappyLabel.textContent = hp >= 80 ? '非常满意' : hp >= 65 ? '满意' : hp >= 45 ? '一般' : hp >= 25 ? '不满' : '愤怒';
+
+    elPower.textContent = Math.round(state.powerDemand) + ' / ' + Math.round(state.powerSupply);
+    elPower.className = 'v ' + (state.powerDemand > state.powerSupply ? 'bad' : 'good');
+    elPowerLabel.textContent = state.powerDemand > state.powerSupply ? '供电不足' : '电力充裕';
+
+    elDay.textContent = '第 ' + state.day + ' 天';
+    elSpeed.textContent = state.paused ? '已暂停' : '进行中';
+
+    const btns = dockEl.querySelectorAll('.tool');
+    for (let n = 0; n < btns.length; n++) {
+      const d = BUILD[btns[n].dataset.tool];
+      btns[n].classList.toggle('poor', d.cost > 0 && state.money < d.cost);
+    }
+  }
+
+  function updateHover() {
+    if (!pointer.inside) {
+      pointer.tx = pointer.ty = -1;
+      hintEl.style.opacity = 0;
+      lastHintKey = '';
+      return;
+    }
+    const w = toWorld(pointer.x, pointer.y);
+    const t = toTile(w.x, w.y);
+    pointer.tx = t.i; pointer.ty = t.j;
+    if (!inMap(t.i, t.j)) {
+      hintEl.style.opacity = 0;
+      lastHintKey = '';
+      return;
+    }
+    const v = canPlace(t.i, t.j, state.tool);
+    const key = state.tool + '|' + v.ok + '|' + v.why;
+    if (key !== lastHintKey) {
+      lastHintKey = key;
+      hintEl.textContent = v.ok
+        ? (state.tool === 'del' ? '拆除' : BUILD[state.tool].name + '  ¥' + BUILD[state.tool].cost)
+        : v.why;
+      hintEl.style.color = v.ok ? '#bfe3ff' : '#ff9c9c';
+    }
+    hintEl.style.opacity = 1;
+  }
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = window.innerWidth, h = window.innerHeight;
+    const cw = Math.floor(w * dpr), ch = Math.floor(h * dpr);
+    if (canvas.width !== cw || canvas.height !== ch) {
+      canvas.width = cw;
+      canvas.height = ch;
+    }
+    view.dpr = dpr;
+    view.cw = w;
+    view.ch = h;
+  }
+
+  /* ---------------- 主循环 ---------------- */
+  let lastFrame = 0;
+  let logicAcc = 0;
+  let hudAcc = 0;
+  let lastNudge = 0;
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (!lastFrame) lastFrame = now;
+    const dt = Math.min(0.1, (now - lastFrame) / 1000);
+    lastFrame = now;
+
+    resize();
+    if (!state.paused) {
+      logicAcc += dt;
+      let guard = 0;
+      while (logicAcc >= LOGIC_DT && guard++ < 8) {
+        logic(LOGIC_DT);
+        logicAcc -= LOGIC_DT;
+      }
+      if (state.noRoadHouses > 0 && now / 1000 - lastNudge > 18) {
+        lastNudge = now / 1000;
+        toast('有 ' + state.noRoadHouses + ' 栋住宅没接通道路，铺一段路到门口吧', 2600);
+      }
+    }
+    updateHover();
+    draw(now / 1000);
+
+    hudAcc += dt;
+    if (hudAcc >= 0.15) {
+      hudAcc = 0;
+      updateHUD();
+    }
+  }
+
+  /* ---------------- 启动 ---------------- */
+  $('btn-pause').addEventListener('click', togglePause);
+  $('btn-help').addEventListener('click', () => helpEl.classList.add('open'));
+  $('help-close').addEventListener('click', () => helpEl.classList.remove('open'));
+  helpEl.addEventListener('click', (e) => { if (e.target === helpEl) helpEl.classList.remove('open'); });
+  $('btn-new').addEventListener('click', () => {
+    if (!window.confirm('换一张新地图？当前城市会被清空。')) return;
+    newGame();
+    toast('新地图已生成，开始建造吧！', 2600);
+  });
+
+  resize();
+  buildToolbar();
+  const restored = load();
+  if (!restored) newGame();
+  selectTool(state.tool || 'road', true);
+  updateHUD();
+  requestAnimationFrame(frame);
+
+  if (!restored) {
+    setTimeout(() => toast('提示：先铺几条道路，再在路边建住宅', 4200), 600);
+  }
+
+  setInterval(save, 6000);
+  window.addEventListener('beforeunload', save);
+
+  // 调试/试玩接口
+  window.CITY = {
+    state: state,
+    view: view,
+    place: function (i, j, tool) {
+      if (tool) state.tool = tool;
+      return place(i, j);
+    },
+    newGame: newGame,
+    save: save,
+    fitView: fitView,
+    selectTool: selectTool,
+    stats: function () {
+      let houses = 0, roads = 0;
+      for (let k = 0; k < N * N; k++) {
+        const c = state.cells[k];
+        if (!c) continue;
+        if (c.type === 'house') houses++;
+        else if (c.type === 'road') roads++;
+      }
+      return {
+        money: Math.round(state.money), pop: state.pop, happiness: state.happiness,
+        houses: houses, roads: roads, day: state.day,
+        power: [state.powerDemand, state.powerSupply],
+      };
+    },
+  };
+})();
+</script>
+</body>
+</html>
